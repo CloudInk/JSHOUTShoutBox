@@ -8,16 +8,11 @@
 <body>
 <div id='avatar_change_container'>
 <div id='avatar_current'><img src='css/img/guest.png' /></div>
-<div id='avatar_current_infos'>Default Avatar<div id='avatar_current_infos_extended'>Guest Avatar</div></div>
-<div id='avatar_change_title'>Change</div>
-<div id='avatar_select_box'><input name="" type="file" size="20" class='settingtext' /></div>
-<div id='avatar_change_title'>Title</div>
-<div id='avatar_textbox'><input name="ut" type="text" value="" size="20" class='settingtext'/></div>
-<div id='avatar_user_title'>Enter Desc.</div>
-<div id='avatar_textbox'><input name="ut" type="text" value="" size="20" class='settingtext'/></div>
-
-<div id='avatar_textbox'><input name="" type="button" class='ui-dialog-buttonset' value='save'/></div>
+<div id='avatar_current_infos'>Default Avatar</div>
+<div id='avatar_change_title'><div id='avatar_change_title_text'><a href='http://gravitar.com'>Gravitar</a></div></div>
+<div id='avatar_textbox'><input name="ut" type="text" value="" size="30" class='settingtext' placeholder="gravitar email"/></div>
+<div id='avatar_change_title'><div id='avatar_change_title_text'><a href='http://gravitar.com'>Gravitar</a></div></div>
+<div id='avatar_textbox'><input name="ut" type="text" value="" size="30" class='settingtext' placeholder="gravitar email"/></div>
 </div>
-<p>&nbsp;</p>
 </body>
 </html>
