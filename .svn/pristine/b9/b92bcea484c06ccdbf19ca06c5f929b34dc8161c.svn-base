@@ -1,0 +1,35 @@
+<?php
+include ('js_v3.php');
+$js = new jShout ( $_COOKIE ['jShout'] );
+
+$result = mysql_query ( cfg::v3_msg_query );
+while ( $row = mysql_fetch_array ( $result ) ) {
+	$data [] = array (
+		0 => $row [0], 1 => $row [1], 2 => $row [2], 3 => $row [3] 
+	);
+}
+if (! is_array ( $data )) {
+	$js->sys_msg ( "Error getting data array." );
+} else {
+	
+	foreach ( $data as $key => $value ) {
+		$dec = $js->js_v3_decrypt($value[1]);
+		if (cfg::hide_sys_messages && $value [3] == "j-Shout") {
+			print ("<!-- System Message Skipped -->") ;
+		} else {
+			$value [1] = strip_tags ( wordwrap ( $value [1], 29, " " ) ) . "<br />";
+			print ("
+					<div id='shout_msg_container'>
+					<div id='shout_avatar_container'></div>
+					<div id='shout_stamp_container'><em>{$value[2]}</em></div>
+					<div id='shout_user_container'><em>{$value[3]}</em></div>
+					<div id='shout_message'>
+					<div id='shout_message_text'>{$dec}</div>
+					</div></div>
+					") ;
+		}
+	}
+}
+
+// v3_list_msg();
+?>

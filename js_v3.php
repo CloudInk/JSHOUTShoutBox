@@ -1,0 +1,399 @@
+<?php
+/**
+ * Copyright 2012 CloudInk, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may
+ * not use this file except in compliance with the License. You may obtain
+ * a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
+
+require ("js_v3_config.php");
+class jShout implements cfg {
+	
+	function __construct($cookie, $POST_DATA = null) {
+		$this->data = $POST_DATA;
+		$this->_start_time = microtime ( true );
+		$this->cookie = $cookie;
+		$this->link = $this->openDB ();
+		
+		$pf = time ();
+		setcookie ( "jShout_flood_protect", $pf );
+		$this->flood = $_COOKIE ['jShout_flood_protect'];
+		if (is_null ( $POST_DATA )) {
+			echo "<!-- Refresh {$this->_start_time} || Flood Protect: {$pf} -->";
+		} else {
+			$this->process_shout ( $this->data, false );
+		}
+	
+	} 
+	
+	function js_v3_encrypt($data) {
+		$iv = mcrypt_create_iv ( mcrypt_get_block_size ( MCRYPT_TripleDES, MCRYPT_MODE_CBC ), MCRYPT_DEV_RANDOM );
+		$key = cfg::ENC_KEY;
+		$enc_output = @mcrypt_cbc ( MCRYPT_TripleDES, $key, $data, MCRYPT_ENCRYPT);
+		return array(base64_encode ( $enc_output ), $iv);
+	}
+	
+	
+	function get_gravatar( $email, $s = 32, $d = 'mm', $r = 'g', $img = true, $atts = array() ) {
+		$default = "css/img/shout.png";
+		$url = 'http://www.gravatar.com/avatar/';
+		$url .= md5( strtolower( trim( $email ) ) );
+		$url .= "?s=$s&d=$d&r=$r";
+		if ( $img ) {
+			$url = '<img src="' . $url . '"';
+			foreach ( $atts as $key => $val )
+				$url .= ' ' . $key . '="' . $val . '"';
+			$url .= ' />';
+		}
+		return $url;
+	}
+	function js_v3_decrypt($data) {
+		$key = cfg::ENC_KEY;
+		$data = base64_decode ( $data );
+		$dec_output = @mcrypt_cbc ( MCRYPT_TripleDES, $key, $data, MCRYPT_DECRYPT);
+		return $dec_output;
+	}
+			
+	function sys_msg($msg) {
+		print ("<B>j-Shout</b>: &nbsp;&nbsp;" . $msg) ;
+		$date = date('m-d g:ia');
+		$sql = "INSERT INTO jshout VALUES (NULL, '{$msg}', '{$date}', 'j-Shout', '0')";
+		mysql_query ( $sql ) or die ( mysql_error () );
+	
+	}
+	
+	function openDB() {
+		if (mysql_connect ( cfg::db_host, cfg::db_user, cfg::db_pass )) {
+			mysql_select_db ( cfg::db_name );
+			return true;
+		} else {
+			return false;
+		}
+		
+		return null;
+	}
+	
+	function process_shout($POST_DATA, $action = false) {
+		if (cfg::enabled) {
+			if (is_array ( $POST_DATA ) && in_array ( "v_01", $POST_DATA )) {
+				if (! empty ( $POST_DATA ['jshout'] ) && $POST_DATA ['jshout'] == "v_01") {
+					if ($this->link) {
+						if (@$POST_DATA ['req'] == "add_shout") {
+							$shout = strip_tags ( @$POST_DATA ['sb'] );
+							$clean = mysql_real_escape_string ( $shout );
+							if (cfg::allow_switches) {
+								
+								$action = $this->process_switch ( $clean );
+								
+								if ($this->inStr ( "/pvt", $clean )) {
+									$this->send_private ( $clean );
+									$action = false;
+									$clean = '';
+								}
+								
+								if ($this->inStr ( "/register", $clean )) {
+									$this->register ( $clean );
+									$action = false;
+								}
+								
+								if ($this->inStr ( "/login", $clean )) {
+									$this->login ( $clean );
+									$action = false;
+								}
+								
+								if ($this->inStr ( "http://", $clean ) || $this->inStr ( "https://", $clean )) {
+									$this->link ( $clean );
+									$action = false;
+								}
+								
+								if ($action) {
+									$this->add_shout ( $clean );
+								}
+							
+							} else {
+								$this->sys_msg ( "Command line switches disabled by admin" );
+							}
+						
+						}
+					
+					} else {
+						print ("failed to connect") ;
+						die ();
+					}
+				}
+			} else {
+				print_r ( $POST_DATA );
+			}
+		} else {
+			$this->sys_msg ( "*** SYSTEM OFFLINE ***" );
+		}
+	}
+	
+	function inStr($needle, $haystack) {
+		$needlechars = strlen ( $needle );
+		$i = 0;
+		for($i = 0; $i < strlen ( $haystack ); $i ++) {
+			if (substr ( $haystack, $i, $needlechars ) == $needle) {
+				return TRUE;
+			}
+		}
+		return FALSE;
+	}
+	
+	function logout() {
+		mysql_query ( "UPDATE jshout_user SET auth='000' WHERE user='{$this->cookie}'" );
+		setcookie ( "jShout", '' );
+		setcookie ( "jShout_auth", '' );
+	}
+	
+	function process_switch($clean) {
+		switch ($clean) {
+			case "/date" :
+				$this->add_shout ( date ( 'l jS \of F Y h:i:s A' ) );
+				return false;
+			case "/logout" :
+				mysql_query ( "UPDATE jshout_user SET auth='000' WHERE user='{$this->cookie}'" );
+				setcookie ( "jShout", '' );
+				setcookie ( "jShout_auth", '' );
+				$this->sys_msg ( "Logged out, see ya later {$this->cookie}" );
+				return false;
+			case "/clear" :
+				$clean = $this->clear ( $clean );
+				return false;
+			default :
+				return true;
+		
+		}
+	}
+	
+	function params($clean, $int) {
+		$out = explode ( " ", $clean );
+		return $out [$int];
+	}
+	
+	function send_private($clean) {
+		if ($this->get_auth ( $this->cookie )) {
+			$strInput = explode ( " ", $clean );
+			if ($strInput [0] != "/pvt") {
+				$this->add_shout ( $clean );
+				exit ();
+			} else {
+				$cnt = count ( $strInput );
+				$strInput [1] = mysql_real_escape_string ( $strInput [1] );
+				$strInput [2] = mysql_real_escape_string ( $strInput [2] );
+				$strInput [3] = mysql_real_escape_string ( $strInput [3] );
+				if ($cnt >= 3) {
+					$sql = mysql_query ( "SELECT user FROM jshout_user WHERE user='{$strInput[1]}'" );
+					$dbu = mysql_fetch_row ( $sql );
+					if ($dbu [0] == $strInput [1]) {
+						$clean = "Message sent to: {$strInput[1]}";
+						mysql_query ( "INSERT INTO jshout_private VALUES (NULL, '{$strInput[2]} {$strInput[3]} {$strInput[4]} {$strInput[5]} {$strInput[6]}', '{$this->cookie}', '{$strInput[1]}', CURRENT_TIMESTAMP)" );
+					} else {
+						$clean = $this->err ( "User not found <B>{$strInput[1]}</B>, message not sent. Try checking case." );
+					}
+				} else {
+					$clean = $this->err ( "Missing Message Params." );
+				}
+			}
+			$this->sys_msg ( $clean );
+			return null;
+		} else {
+			$this->sys_msg ( "You must be logged in to send private messages" );
+			return null;
+		}
+	
+	}
+	
+	function register($clean) {
+		$strInput = explode ( " ", $clean );
+		if ($strInput [0] != "/register") {
+			$clean = $clean;
+		} else {
+			$cnt = count ( $strInput );
+			$strInput [1] = mysql_real_escape_string ( $strInput [1] );
+			$strInput [2] = mysql_real_escape_string ( $strInput [2] );
+			if ($cnt >= 3) {
+				$sql = mysql_query ( "SELECT user FROM jshout_user WHERE user='{$strInput[1]}'" );
+				$dbu = mysql_fetch_row ( $sql );
+				if ($dbu [0] == $strInput [1]) {
+					$clean = $this->err ( "Registration failed, user already in use." );
+				} else {
+					$clean = "<font color=\"#060\">User Registered ({$strInput[1]})</font>";
+					setcookie ( "jShout_id", sha1 ( $strInput [2] ) );
+					$pass = sha1 ( $strInput [2] );
+					setcookie ( "jShout_user", $strInput [1] );
+					mysql_query ( "INSERT INTO jshout_user VALUES (NULL, '{$strInput[1]}', '{$pass}', '0', 'Never', 'Never', '1', '')" );
+				}
+			} else {
+				$clean = $this->err ( "Missing Registration Params." );
+			}
+		}
+		$this->sys_msg ( $clean );
+		return null;
+	}
+	
+	function err($msg) {
+		$font_color = cfg::err_color;
+		$out = "<font color=\"{$font_color}\">{$msg}</font>";
+		return $out;
+	}
+	
+	function login($clean) {
+		$user = explode ( " ", $clean );
+		if (count ( $user ) >= 3) {
+			$user [0] = "Login";
+			$user [1] = mysql_real_escape_string ( $user [1] );
+			$user [2] = mysql_real_escape_string ( $user [2] );
+			$pass = sha1 ( $user [2] );
+			
+			$sql = mysql_query ( "SELECT id,user,pass FROM jshout_user WHERE user='{$user[1]}' AND pass='{$pass}'" );
+			$udata = mysql_fetch_row ( $sql );
+			
+			if ($udata [0] == '') {
+				return false;
+			} elseif ($udata [1] == $user [1] && $udata [2] == $pass) {
+				session_start ();
+				$id = session_id ();
+				$today = date("F j, Y, g:i a");
+				mysql_query ( "UPDATE jshout_user SET auth='{$id}' WHERE id='{$udata[0]}'" );
+				mysql_query ( "UPDATE jshout_user SET last_login='{$today}' WHERE id='{$udata[0]}'" );
+				setcookie ( "jShout_auth", session_id () );
+				setcookie ( "jShout", $user [1] );
+				setcookie ( "jShout_ll", $today);
+				sleep ( 1 );
+				$uname = $user [1];
+				return true;
+			} else {
+				return false;
+			}
+		
+		} else {
+			return false;
+		}
+		return true;
+	}
+	
+	function tcate($str, $chars, $to_space, $replacement = "...") {
+		if ($chars > strlen ( $str )) return $str;
+		
+		$str = substr ( $str, 0, $chars );
+		
+		$space_pos = strrpos ( $str, " " );
+		if ($to_space && $space_pos >= 0) {
+			$str = substr ( $str, 0, strrpos ( $str, " " ) );
+		}
+		
+		return ($str . $replacement);
+	}
+	
+	function link($clean) {
+		$url = strip_tags ( $clean );
+		$file = @file ( $url );
+		$file = @implode ( "", $file );
+		$title = preg_match ( "/<title>(.+)<\/title>/i", $file, $r );
+		$r [1] = mysql_real_escape_string ( $r [1] );
+		$r [1] = $this->tcate ( $r [1], 70, true, "..." );
+		$clean = mysql_real_escape_string ( "<a href='{$url}' title='{$url}' target='_new'>{$r[1]}</a>" );
+		if ($r [1] == '') {
+			$clean = mysql_real_escape_string ( "<a href='{$url}' title='{$url}' target='_new'>{$url}</a>" );
+		}
+		$this->sys_msg ( $clean );
+		return null;
+	}
+	
+	function reg_msg($msg) {
+		$color = cfg::reg_color;
+		$shout = "<font color=\"{$color}\">" . $msg . "</font>";
+		return $shout;
+	}
+	function guest_msg($msg) {
+		$color = cfg::guest_color;
+		$shout = "<font color=\"{$color}\">" . $msg . "</font>";
+		return $shout;
+	}
+	
+	function get_auth($user) {
+		if (cfg::must_auth) {
+			if ($_COOKIE ['jShout_auth'] == '') {
+				setcookie ( "jShout", '' );
+			} else {
+				$sql = "SELECT auth FROM jshout_user WHERE user='{$user}')";
+				$res = mysql_query ( $sql );
+				$a = @mysql_fetch_row ( $res );
+				if ($a [0] != session_id ()) {
+					return false;
+				} else {
+					return true;
+				}
+			}
+		} else {
+			return true;
+		}
+	
+	}
+	function add_shout($clean, $uname = 'Guest') {
+		if ($this->cookie == '') {
+			$uname = "Guest";
+			$shout = strip_tags( $clean );
+		} else {
+			$uname = $this->cookie;
+			$shout = strip_tags($clean);
+		}
+		if ($this->flood > $_COOKIE ['jShout_last_shout'] + cfg::flood_timeout) {
+			if ($this->get_auth ( $uname )) {
+				$pf = time ();
+				setcookie ( "jShout_last_shout", $pf );
+				$edata= $this->js_v3_encrypt($shout);
+				$date = date('m-d g:ia');
+				$sql = "INSERT INTO jshout VALUES (NULL, '{$edata[0]}', '{$date}', '{$uname}', '{$edata[1]}')";
+				$today = date("F j, Y, g:i a");
+				mysql_query ( "UPDATE jshout_user SET last_shout='{$today}' WHERE user='{$uname}'" );
+				mysql_query ( $sql ) or die ( mysql_error () );
+				if (mysql_affected_rows () > 0) {
+					print ("<B>{$uname}</b>: &nbsp;&nbsp;" . $shout) ;
+				} else {
+					print ('failed to add shout') ;
+					die ();
+				}
+			} else {
+				$this->sys_msg ( "Please [/login] or [/register]." );
+			}
+		} else {
+			$tl = floor ( time () - $_COOKIE ['jShout_last_shout'] );
+			$this->sys_msg ( $this->err ( "Try again in $tl seconds." ) );
+		}
+	
+	}
+	
+	function clear($clean) {
+		if (cfg::allow_clear) {
+			if ($this->cookie == '') {
+				$clean = "You are not logged in";
+			} else {
+				mysql_query ( "TRUNCATE jshout" );
+				$clean = ("Chat cleared on " . date ( 'l jS \of F Y h:i:s A' ));
+			}
+			$this->add_shout ( $clean );
+			return null;
+		} else {
+			$this->sys_msg ( $this->err ( "Clearing is disabled by admin" ) );
+		}
+	}
+	
+	function __destruct() {
+		$this->_stop_time = microtime ( true );
+		$diff = round ( ($this->_stop_time - $this->_start_time) * 1000, 3 );
+		$this->exTime = $diff;
+	}
+}
+
+?>

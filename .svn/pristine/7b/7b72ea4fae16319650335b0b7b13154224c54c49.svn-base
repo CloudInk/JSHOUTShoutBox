@@ -1,0 +1,18 @@
+$(document).ready(function(){
+var history_refresh = setInterval(function()
+		{	
+			$('#loading').fadeIn(100);
+			$('#private').load('js_v3_message_count.php');
+			//old$('#center_content_history').load('jShout_history_refresh.php'); 
+			$('#lock').load('js_v3_user.php');
+			$('#online').load('js_v3_user_status.php');
+			$('#center_content_settings_login').load('js_v3_login.php');
+			$('#loading').fadeOut(300);
+		}, 5000);
+
+var v3_msgs = setInterval(function() {
+	$('#center_content_messages').load('js_v3_msg.php');
+	$('#shout_footer_left').html("");
+	$('#shout_footer_left').html("<a href='javascript:void(0)' id='shout_footer_left_link_hide'><img src='css/img/32x32clear.png' border='0'/></a>");
+}, 500);
+});
