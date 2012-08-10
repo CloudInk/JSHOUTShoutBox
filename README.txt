@@ -19,7 +19,7 @@ You can also integrate your J-SHOUT shout box with your current website and auth
 
 -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 Author: Tim Walton
-Testing: Jariz, Jaydi, Liz
+Testing: Scripts, Jariz, Jaydi, Liz
 Code Base: Tim Walton
 PHP: Tim Walton
 JS: Tim Walton
